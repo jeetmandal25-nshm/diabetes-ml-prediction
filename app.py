@@ -1,14 +1,14 @@
 import streamlit as st
 import pickle
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-from fpdf import FPDF
-import os
+import time
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="Diabetes AI Dashboard",
-    page_icon="🧠",
+    page_title="AI Diabetes Dashboard",
+    page_icon="🩺",
     layout="wide"
 )
 
@@ -16,100 +16,98 @@ st.set_page_config(
 model = pickle.load(open("model/diabetes_model.pkl", "rb"))
 scaler = pickle.load(open("model/scaler.pkl", "rb"))
 
-# ---------------- SIDEBAR ----------------
-st.sidebar.title("🧠 Diabetes AI System")
-
-st.sidebar.info("""
-Algorithm : Random Forest  
-Dataset : PIMA Indians Diabetes Dataset  
-Purpose : Early Diabetes Detection
-""")
+# ---------------- SESSION HISTORY ----------------
+if "history" not in st.session_state:
+    st.session_state.history = []
 
 # ---------------- TITLE ----------------
-st.title("🏥 AI Powered Diabetes Detection Dashboard")
+st.title("🩺 AI Diabetes Early Detection Dashboard")
+st.write("Machine Learning based clinical decision support system")
 
 st.divider()
 
-# ---------------- INPUT SECTION ----------------
-col1, col2 = st.columns(2)
+# ---------------- SIDEBAR INPUT ----------------
+st.sidebar.header("Patient Health Details")
 
-with col1:
-    pregnancies = st.number_input("Pregnancies", 0, 20)
-    glucose = st.number_input("Glucose", 0, 200)
-    bp = st.number_input("Blood Pressure", 0, 150)
-    skin = st.number_input("Skin Thickness", 0, 100)
+preg = st.sidebar.number_input("Pregnancies", 0, 20)
+glucose = st.sidebar.number_input("Glucose Level", 0, 200)
+bp = st.sidebar.number_input("Blood Pressure", 0, 140)
+skin = st.sidebar.number_input("Skin Thickness", 0, 100)
+insulin = st.sidebar.number_input("Insulin", 0, 900)
+bmi = st.sidebar.number_input("BMI", 0.0, 70.0)
+dpf = st.sidebar.number_input("Diabetes Pedigree Function", 0.0, 3.0)
+age = st.sidebar.number_input("Age", 1, 120)
 
-with col2:
-    insulin = st.number_input("Insulin", 0, 900)
-    bmi = st.number_input("BMI", 0.0, 70.0)
-    dpf = st.number_input("Diabetes Pedigree Function", 0.0, 3.0)
-    age = st.number_input("Age", 1, 120)
+input_data = np.array([[preg, glucose, bp, skin, insulin, bmi, dpf, age]])
+scaled_data = scaler.transform(input_data)
+
+# ---------------- DASHBOARD METRICS ----------------
+col1, col2, col3 = st.columns(3)
+col1.metric("Glucose", glucose)
+col2.metric("BMI", bmi)
+col3.metric("Age", age)
+
+st.divider()
 
 # ---------------- PREDICTION ----------------
 if st.button("🔍 Analyze Patient"):
 
-    input_data = np.array([[pregnancies, glucose, bp,
-                            skin, insulin, bmi, dpf, age]])
+    with st.spinner("Analyzing patient health data..."):
+        time.sleep(2)
+        prediction = model.predict(scaled_data)
+        probability = model.predict_proba(scaled_data)
 
-    scaled = scaler.transform(input_data)
-
-    prediction = model.predict(scaled)
-    prob = model.predict_proba(scaled)
-
-    st.subheader("Prediction Result")
+    result = "High Risk" if prediction[0] == 1 else "Low Risk"
 
     if prediction[0] == 1:
         st.error("⚠ HIGH RISK OF DIABETES")
-        result_text = "High Risk"
     else:
         st.success("✅ LOW RISK OF DIABETES")
-        result_text = "Low Risk"
 
-    # ---------------- PROBABILITY CHART ----------------
-    st.subheader("Risk Probability")
+    st.subheader("Prediction Probability")
 
+    st.write(f"Diabetes Risk: {probability[0][1]*100:.2f}%")
+    st.write(f"No Diabetes: {probability[0][0]*100:.2f}%")
+
+    # ---------------- GRAPH ----------------
+    fig, ax = plt.subplots()
     labels = ["No Diabetes", "Diabetes"]
-    values = prob[0]
-
-    fig = plt.figure()
-    plt.bar(labels, values)
-    plt.ylabel("Probability")
+    ax.bar(labels, probability[0])
+    ax.set_ylabel("Probability")
     st.pyplot(fig)
 
-    # ---------------- FEATURE IMPORTANCE ----------------
-    st.subheader("Feature Importance")
+    # ---------------- SAVE HISTORY ----------------
+    st.session_state.history.append({
+        "Glucose": glucose,
+        "BMI": bmi,
+        "Age": age,
+        "Result": result
+    })
 
-    features = [
-        "Pregnancies","Glucose","BP","Skin",
-        "Insulin","BMI","DPF","Age"
-    ]
+    # ---------------- HEALTH ADVICE ----------------
+    st.subheader("Doctor Recommendation")
 
-    importance = model.feature_importances_
-
-    fig2 = plt.figure()
-    plt.barh(features, importance)
-    st.pyplot(fig2)
-
-    # ---------------- PDF REPORT ----------------
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=14)
-
-    pdf.cell(200,10,txt="Diabetes Prediction Report", ln=True, align="C")
-    pdf.ln(10)
-
-    pdf.cell(200,10,txt=f"Result: {result_text}", ln=True)
-    pdf.cell(200,10,txt=f"Diabetes Probability: {prob[0][1]*100:.2f}%", ln=True)
-
-    pdf.output("report.pdf")
-
-    with open("report.pdf", "rb") as file:
-        st.download_button(
-            label="📄 Download Medical Report",
-            data=file,
-            file_name="Diabetes_Report.pdf"
-        )
+    if prediction[0] == 1:
+        st.warning("""
+        • Reduce sugar intake  
+        • Daily exercise recommended  
+        • Maintain healthy BMI  
+        • Consult healthcare professional
+        """)
+    else:
+        st.info("""
+        • Maintain balanced diet  
+        • Regular health checkups  
+        • Continue healthy lifestyle
+        """)
 
 st.divider()
+
+# ---------------- HISTORY TABLE ----------------
+st.subheader("📊 Prediction History")
+
+if st.session_state.history:
+    history_df = pd.DataFrame(st.session_state.history)
+    st.dataframe(history_df, use_container_width=True)
 
 st.caption("Developed using Machine Learning & Streamlit")
