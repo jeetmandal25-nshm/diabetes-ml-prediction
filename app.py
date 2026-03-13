@@ -4,13 +4,24 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
+from utils.pdf_report import create_pdf
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="AI Diabetes Dashboard",
+    page_title="AI Diabetes Detection System",
     page_icon="🩺",
     layout="wide"
 )
+
+# ---------------- LOGIN ----------------
+st.sidebar.title("Doctor Login")
+
+username = st.sidebar.text_input("Username")
+password = st.sidebar.text_input("Password", type="password")
+
+if username != "doctor" or password != "1234":
+    st.warning("Login to access dashboard")
+    st.stop()
 
 # ---------------- LOAD MODEL ----------------
 model = pickle.load(open("model/diabetes_model.pkl", "rb"))
@@ -21,16 +32,16 @@ if "history" not in st.session_state:
     st.session_state.history = []
 
 # ---------------- TITLE ----------------
-st.title("🩺 AI Diabetes Early Detection Dashboard")
-st.write("Machine Learning based clinical decision support system")
+st.title("🩺 AI Diabetes Early Detection System")
+st.write("Clinical Decision Support Tool using Machine Learning")
 
 st.divider()
 
-# ---------------- SIDEBAR INPUT ----------------
+# ---------------- INPUT ----------------
 st.sidebar.header("Patient Health Details")
 
 preg = st.sidebar.number_input("Pregnancies", 0, 20)
-glucose = st.sidebar.number_input("Glucose Level", 0, 200)
+glucose = st.sidebar.number_input("Glucose", 0, 200)
 bp = st.sidebar.number_input("Blood Pressure", 0, 140)
 skin = st.sidebar.number_input("Skin Thickness", 0, 100)
 insulin = st.sidebar.number_input("Insulin", 0, 900)
@@ -43,37 +54,41 @@ scaled_data = scaler.transform(input_data)
 
 # ---------------- DASHBOARD METRICS ----------------
 col1, col2, col3 = st.columns(3)
-col1.metric("Glucose", glucose)
+
+col1.metric("Glucose Level", glucose)
 col2.metric("BMI", bmi)
 col3.metric("Age", age)
 
 st.divider()
 
 # ---------------- PREDICTION ----------------
-if st.button("🔍 Analyze Patient"):
+if st.button("Analyze Patient"):
 
     with st.spinner("Analyzing patient health data..."):
         time.sleep(2)
         prediction = model.predict(scaled_data)
-        probability = model.predict_proba(scaled_data)
+        prob = model.predict_proba(scaled_data)
 
     result = "High Risk" if prediction[0] == 1 else "Low Risk"
 
     if prediction[0] == 1:
-        st.error("⚠ HIGH RISK OF DIABETES")
+        st.error("⚠ High Risk of Diabetes")
     else:
-        st.success("✅ LOW RISK OF DIABETES")
+        st.success("✅ Low Risk of Diabetes")
 
     st.subheader("Prediction Probability")
 
-    st.write(f"Diabetes Risk: {probability[0][1]*100:.2f}%")
-    st.write(f"No Diabetes: {probability[0][0]*100:.2f}%")
+    st.write(f"Diabetes Risk: {prob[0][1]*100:.2f}%")
+    st.write(f"No Diabetes: {prob[0][0]*100:.2f}%")
 
     # ---------------- GRAPH ----------------
     fig, ax = plt.subplots()
+
     labels = ["No Diabetes", "Diabetes"]
-    ax.bar(labels, probability[0])
+    ax.bar(labels, prob[0])
+
     ax.set_ylabel("Probability")
+
     st.pyplot(fig)
 
     # ---------------- SAVE HISTORY ----------------
@@ -84,30 +99,31 @@ if st.button("🔍 Analyze Patient"):
         "Result": result
     })
 
-    # ---------------- HEALTH ADVICE ----------------
-    st.subheader("Doctor Recommendation")
+    # ---------------- PDF REPORT ----------------
+    patient_data = {
+        "Pregnancies": preg,
+        "Glucose": glucose,
+        "Blood Pressure": bp,
+        "BMI": bmi,
+        "Age": age
+    }
 
-    if prediction[0] == 1:
-        st.warning("""
-        • Reduce sugar intake  
-        • Daily exercise recommended  
-        • Maintain healthy BMI  
-        • Consult healthcare professional
-        """)
-    else:
-        st.info("""
-        • Maintain balanced diet  
-        • Regular health checkups  
-        • Continue healthy lifestyle
-        """)
+    pdf_file = create_pdf(patient_data, result, prob[0][1]*100)
+
+    with open(pdf_file, "rb") as f:
+        st.download_button(
+            "Download Medical Report",
+            f,
+            file_name="diabetes_report.pdf"
+        )
 
 st.divider()
 
-# ---------------- HISTORY TABLE ----------------
-st.subheader("📊 Prediction History")
+# ---------------- HISTORY ----------------
+st.subheader("Prediction History")
 
 if st.session_state.history:
-    history_df = pd.DataFrame(st.session_state.history)
-    st.dataframe(history_df, use_container_width=True)
+    df = pd.DataFrame(st.session_state.history)
+    st.dataframe(df, use_container_width=True)
 
-st.caption("Developed using Machine Learning & Streamlit")
+st.caption("AI Medical Dashboard - Machine Learning Project")
